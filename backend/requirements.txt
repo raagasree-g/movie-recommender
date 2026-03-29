@@ -4,3 +4,4 @@ scikit-learn
 rapidfuzz
 requests
 flask-cors
+gunicorn
