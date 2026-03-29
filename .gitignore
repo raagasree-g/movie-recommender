@@ -1,0 +1,5 @@
+*.msi
+*.exe
+__pycache__/
+*.pyc
+.env

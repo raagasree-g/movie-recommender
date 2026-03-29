@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Movie Recommender</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #121212;
+            color: white;
+            padding: 20px;
+        }
+
+        h1 { color: #ff4c4c; }
+
+        input, select, button {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border: none;
+        }
+
+        button {
+            background: #ff4c4c;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover { background: #ff1a1a; }
+
+        .row {
+            display: flex;
+            overflow-x: auto;
+            gap: 15px;
+            padding: 10px 0;
+        }
+
+         .card {
+              background: #1e1e1e;
+              padding: 10px;
+              border-radius: 12px;
+              min-width: 170px;
+              transition: all 0.3s ease;
+              cursor: pointer;
+              overflow: hidden;
+               }
+
+        .card:hover {
+               transform: scale(1.08);
+               box-shadow: 0 10px 25px rgba(255, 76, 76, 0.4);
+                   }
+
+        img {
+                width: 100%;
+                border-radius: 10px;
+                height: 240px;
+                object-fit: cover;
+             }
+
+        .title {
+    font-size: 15px;
+    font-weight: bold;
+    margin-top: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+        .meta {
+    font-size: 12px;
+    color: #bbb;
+}
+        .error { color: #ff4c4c; }
+
+        /* ✅ CLEAN suggestions CSS */
+        #suggestions {
+            background: #1e1e1e;
+            border-radius: 5px;
+            max-width: 250px;
+            margin-top: 5px;
+            position: absolute;
+            z-index: 1000;
+        }
+
+        #suggestions div {
+            padding: 8px;
+            cursor: pointer;
+        }
+
+        #suggestions div:hover {
+            background: #333;
+        }
+
+        .skeleton {
+            background: #2a2a2a;
+            border-radius: 10px;
+            min-width: 160px;
+            height: 260px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .skeleton::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -150px;
+            width: 150px;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            animation: shimmer 1.2s infinite;
+        }
+
+        @keyframes shimmer {
+            100% { left: 100%; }
+        }
+
+        #modal {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.img-wrapper {
+    position: relative;
+}
+
+.overlay {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    padding: 10px;
+    background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+    border-radius: 0 0 10px 10px;
+}
+
+.overlay .title {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.overlay .meta {
+    font-size: 12px;
+    color: #ccc;
+}
+
+.row {
+    margin-bottom: 25px;
+}
+
+h2 {
+    margin-top: 40px;
+}
+
+.card.active {
+    border: 2px solid #ff4c4c;
+}
+    </style>
+</head>
+
+<body>
+
+<h1>🎬 Movie Recommender</h1>
+
+<label>Movie Name:</label><br>
+<input type="text" id="movie" placeholder="Enter movie name">
+<div id="suggestions"></div>
+
+<label>Mood:</label><br>
+<select id="mood">
+    <option value="happy">Happy</option>
+    <option value="sad">Sad</option>
+    <option value="thrilling">Thrilling</option>
+</select><br><br>
+
+<button id="btn" onclick="getRecommendations()">Get Recommendations</button>
+
+<h2>⭐ Recommended</h2>
+<div id="results" class="row"></div>
+
+<h2>🔥 Trending Movies</h2>
+<div id="trending" class="row"></div>
+
+<script>
+const FALLBACK_IMG = "https://via.placeholder.com/150x220?text=No+Image";
+
+// ==============================
+// 🔥 AUTOCOMPLETE (ONLY ONE VERSION NOW)
+// ==============================
+const input = document.getElementById("movie");
+const suggestionsDiv = document.getElementById("suggestions");
+
+input.addEventListener("input", async function () {
+    const value = this.value.trim();
+
+    suggestionsDiv.innerHTML = "";
+
+    if (!value) return;
+
+    try {
+        const res = await fetch(`http://127.0.0.1:5000/search?q=${value}`);
+        const data = await res.json();
+
+        data.forEach(title => {
+            const div = document.createElement("div");
+            div.textContent = title;
+
+            div.onclick = () => {
+                input.value = title;
+                suggestionsDiv.innerHTML = "";
+            };
+
+            suggestionsDiv.appendChild(div);
+        });
+
+    } catch (err) {
+        console.error(err);
+    }
+});
+
+// ==============================
+// 🔥 POSTER FETCH
+// ==============================
+async function fetchPoster(title) {
+    try {
+        const apiKey = "29079babcf7421fdad77eb958f4c4243";
+        const cleanTitle = title.split("(")[0].trim();
+
+        const res = await fetch(
+            `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${cleanTitle}`
+        );
+
+        const data = await res.json();
+
+        if (data.results && data.results.length > 0) {
+            const path = data.results[0].poster_path;
+            if (path) {
+                return `https://image.tmdb.org/t/p/w500${path}`;
+            }
+        }
+    } catch (e) {
+        console.log("Poster error:", e);
+    }
+
+    return FALLBACK_IMG;
+}
+
+// ==============================
+// 🔥 RECOMMENDATIONS
+// ==============================
+let isLoading = false;
+
+async function getRecommendations() {
+    if (isLoading) return;
+    isLoading = true;
+
+    const movie = input.value;
+    const mood = document.getElementById("mood").value;
+    const btn = document.getElementById("btn");
+
+    if (!movie) {
+        alert("Enter a movie");
+        isLoading = false;
+        return;
+    }
+
+    const resultsDiv = document.getElementById("results");
+
+    resultsDiv.innerHTML = "";
+    for (let i = 0; i < 6; i++) {
+        const sk = document.createElement("div");
+        sk.className = "skeleton";
+        resultsDiv.appendChild(sk);
+    }
+
+    btn.disabled = true;
+
+    try {
+        const response = await fetch("http://127.0.0.1:5000/recommend", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ movie, mood })
+        });
+
+        const data = await response.json();
+
+        resultsDiv.innerHTML = "";
+
+        if (!Array.isArray(data)) {
+            resultsDiv.innerHTML = `<div class="error">${data.error || "Invalid response"}</div>`;
+            return;
+        }
+
+        data.forEach(item => {
+            const div = document.createElement("div");
+            div.className = "card";
+
+         div.onclick = () => {
+    fetchPoster(item.title).then(poster => {
+        openModal(item.title, poster, item.explanation);
+    });
+};
+
+            const imgId = "img-" + Math.random();
+
+           div.innerHTML = `
+    <div class="img-wrapper">
+        <img id="${imgId}" src="https://via.placeholder.com/150x220?text=Loading">
+        <div class="overlay">
+            <div class="title">${item.title}</div>
+            <div class="meta">⭐ ${item.score ?? item.final_score ?? 0}</div>
+        </div>
+    </div>
+`;
+
+            resultsDiv.appendChild(div);
+
+            fetchPoster(item.title).then(poster => {
+                const img = document.getElementById(imgId);
+                if (img) img.src = poster;
+            });
+        });
+
+        resultsDiv.scrollIntoView({ behavior: "smooth" });
+
+    } catch (error) {
+        console.error(error);
+        resultsDiv.innerHTML = `<div class="error">Error loading recommendations</div>`;
+    } finally {
+        btn.disabled = false;
+        isLoading = false;
+    }
+}
+
+// ==============================
+// 🔥 TRENDING
+// ==============================
+async function loadTrending() {
+    const trendingDiv = document.getElementById("trending");
+    trendingDiv.innerHTML = "Loading...";
+
+    try {
+        const response = await fetch("http://127.0.0.1:5000/trending");
+        const data = await response.json();
+
+        trendingDiv.innerHTML = "";
+
+        data.forEach(movie => {
+            const div = document.createElement("div");
+            div.className = "card";
+div.onclick = () => {
+
+    // 🔥 1. remove previous active
+    document.querySelectorAll(".card").forEach(c => c.classList.remove("active"));
+
+    // 🔥 2. highlight clicked card
+    div.classList.add("active");
+
+    // 🔥 3. open modal (instead of re-calling API)
+    fetchPoster(movie.title).then(poster => {
+        openModal(movie.title, poster, movie.explanation || "");
+    });
+};
+            const poster = movie.poster || FALLBACK_IMG;
+
+            div.innerHTML = `
+                <img src="${poster}" onerror="this.src='${FALLBACK_IMG}'">
+                <div class="title">${movie.title}</div>
+                <div class="meta">⭐ ${movie.rating ?? 0}</div>
+            `;
+
+            trendingDiv.appendChild(div);
+        });
+
+    } catch (error) {
+        console.error(error);
+        trendingDiv.innerHTML = `<div class="error">Error loading trending movies</div>`;
+    }
+}
+
+loadTrending();
+function openModal(title, poster, explanation) {
+    document.getElementById("modal").style.display = "flex";
+    document.getElementById("modal-img").src = poster;
+    document.getElementById("modal-title").innerText = title;
+    document.getElementById("modal-desc").innerText = explanation;
+}
+
+function closeModal() {
+    document.getElementById("modal").style.display = "none";
+}
+</script>
+<div id="modal" style="
+    display:none;
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background:rgba(0,0,0,0.7);
+    justify-content:center;
+    align-items:center;
+">
+    
+   <div style="
+    background:#1e1e1e;
+    padding:20px;
+    border-radius:12px;
+    width:320px;
+    text-align:center;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+">
+        <img id="modal-img" src="" style="width:100%; border-radius:10px;">
+        <h3 id="modal-title"></h3>
+        <p id="modal-desc"></p>
+        <button onclick="closeModal()">Close</button>
+    </div>
+
+</div>
+</body>
+</html>
